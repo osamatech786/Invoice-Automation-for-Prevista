@@ -6,6 +6,8 @@ import requests
 import os
 from dotenv import load_dotenv
 import msal
+from openpyxl import load_workbook
+from datetime import datetime
 
 # Set page configuration with a favicon
 st.set_page_config(
@@ -167,6 +169,132 @@ def process_employee_folder(access_token, drive_id, parent_folder_path, employee
             return f"Error creating folder: {create_response.status_code}"
     else:
         return f"Error fetching parent folder: {response.status_code}"
+
+import requests
+
+def find_master_sheet_path(access_token, drive_id, folder_path):
+    """
+    Find the master sheet (an .xlsx file with 'Invoices' in the name) in the specified folder
+    and return its SharePoint file path.
+
+    Args:
+        access_token (str): OAuth2 access token for authentication.
+        drive_id (str): The ID of the drive to query.
+        folder_path (str): The path to the folder in the drive.
+
+    Returns:
+        str: The SharePoint file path of the master sheet.
+    """
+    # Get the list of files and folders
+    list_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{folder_path}:/children"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(list_url, headers=headers)
+
+    if response.status_code == 200:
+        files_and_folders = response.json().get("value", [])
+    else:
+        raise Exception(f"Error fetching files from folder: {response.status_code} - {response.text}")
+
+    # Find the master sheet
+    for item in files_and_folders:
+        if item["name"].endswith(".xlsx") and "Invoices" in item["name"]:
+            # Return the SharePoint file path
+            return f"{folder_path}/{item['name']}"
+
+    # If no file is found, raise an exception
+    raise FileNotFoundError("No master sheet found (file with '.xlsx' and 'Invoices' in the name).")
+
+
+def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_name, total, month="Jan-24"):
+    """
+    Update the master sheet in SharePoint by modifying only the required cell.
+
+    Args:
+        access_token (str): OAuth2 access token for authentication.
+        drive_id (str): The ID of the SharePoint drive to query.
+        file_path (str): The relative path to the file in SharePoint.
+        employee_name (str): The name of the employee.
+        total (float): The total to update for the given month.
+        month (str): The month to update in the format 'Dec-24'.
+
+    Returns:
+        str: Status message indicating success or failure.
+    """
+    try:
+        # Step 1: Download the file from SharePoint
+        download_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(download_url, headers=headers)
+
+        if response.status_code != 200:
+            return f"Error downloading file: {response.status_code} - {response.text}"
+
+        # Save the file locally
+        local_file_path = "temp_master_sheet.xlsx"
+        with open(local_file_path, "wb") as f:
+            f.write(response.content)
+
+        # Step 2: Update the file locally using the existing logic
+        workbook = load_workbook(local_file_path)
+        sheet = workbook.active  # Assuming the master sheet is the active sheet
+
+        # Define the relevant row/column ranges
+        start_row = 38
+        end_row = 82
+        name_column = "C"  # Column C (e.g., employee names)
+        text_column = "B"  # Column B (e.g., 'STARFLEET  / Catalyst')
+        month_headers_row = 7  # Row 7 contains month headers
+        start_month_column = 8  # Column H (1-based index)
+
+        # Convert the month input to a datetime object for comparison
+        target_month = datetime.strptime(month, "%b-%y")
+
+        # Match the month column
+        for col in range(start_month_column, start_month_column + 12):  # Columns H to S
+            cell_value = sheet.cell(row=month_headers_row, column=col).value
+            if isinstance(cell_value, datetime):
+                formatted_header = cell_value.strftime("%b-%y")
+            else:
+                formatted_header = cell_value
+
+            if formatted_header == month:
+                current_month_col = col
+                break
+        else:
+            os.remove(local_file_path)
+            return f"Error: Month '{month}' not found in master sheet."
+
+        # Locate the employee's row
+        for row in range(start_row, end_row + 1):
+            if (
+                sheet[f"{text_column}{row}"].value == "STARFLEET  / Catalyst" and
+                sheet[f"{name_column}{row}"].value.strip() == employee_name.strip()
+            ):
+                # Update the cell for the current month
+                sheet.cell(row=row, column=current_month_col).value = total
+                break
+        else:
+            os.remove(local_file_path)
+            return f"Error: Employee '{employee_name}' not found in the master sheet."
+
+        # Save the updated workbook locally
+        workbook.save(local_file_path)
+
+        # Step 3: Upload the updated file back to SharePoint
+        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
+        with open(local_file_path, "rb") as f:
+            upload_response = requests.put(upload_url, headers=headers, data=f)
+
+        # Remove the local temporary file
+        os.remove(local_file_path)
+
+        if upload_response.status_code == 200:
+            return f"Successfully updated total for '{employee_name}' in '{month}'."
+        else:
+            return f"Error uploading file back to SharePoint: {upload_response.status_code} - {upload_response.text}"
+
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
 
 
 
@@ -355,26 +483,40 @@ def main():
             with st.spinner("Submitting..."):
                 # time.sleep(5)  # Simulating submission
 
+                ##############################
                 # All Logic here from sharepoint file upload to update master sheet & Folder creation if doesn't exist
+                ##############################
 
                 BASE_FOLDER_PATH = "AEB Financial/2024-25/Invoices"
                 month_folder = get_or_create_month_folder(ACCESS_TOKEN, DRIVE_ID, BASE_FOLDER_PATH)
                 FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}"
 
                 # Process employee folder
-                result_message = process_employee_folder(
+                ##########################
+                process_employee_folder_result_message = process_employee_folder(
                     ACCESS_TOKEN,
                     DRIVE_ID,
                     FOLDER_PATH,
                     st.session_state["name"],
                     f"{invoice_file.name}"
                 )
+                # Log for eamil!
+                st.text("Log: "+f"{process_employee_folder_result_message}")
 
+                # Process master sheet
+                ######################
+                master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, "AEB Financial/2024-25")
+                EMPLOYEE_NAME = st.session_state["name"]
+                TOTAL = st.session_state["total"]
+                MONTH =  datetime.now().strftime("%b-%y")
 
-                # Logs for eamil!
-                st.text("Log: "+f"{result_message}")
-                # st.text("Log: "+f"{master_sheet_update}")
+                update_mastersheet_message = update_mastersheet_sharepoint(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, EMPLOYEE_NAME, TOTAL, MONTH)
+                # Log for eamil!
+                st.text("Log: "+f"{update_mastersheet_message}")
+
+                ##############################
                 # ####################
+                ##############################
 
                 st.session_state["submitting"] = False
                 st.success("Invoice Submitted Successfully!")
