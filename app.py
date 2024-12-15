@@ -107,10 +107,10 @@ def get_or_create_month_folder(access_token, drive_id, parent_folder_path):
         response.raise_for_status()
 
 
-def process_employee_folder(access_token, drive_id, parent_folder_path, employee_name, invoice_file_path):
+def process_employee_folder(access_token, drive_id, parent_folder_path, employee_name, invoice_file_path, optional_files=[]):
     """
     Check if the folder exists for the employee. If not, create it.
-    Move the uploaded invoice to the folder.
+    Move the uploaded invoice and optional files to the folder.
 
     Args:
         access_token (str): OAuth2 access token for authentication.
@@ -118,10 +118,12 @@ def process_employee_folder(access_token, drive_id, parent_folder_path, employee
         parent_folder_path (str): The path to the parent folder containing employee folders.
         employee_name (str): The employee name extracted from the invoice.
         invoice_file_path (str): Path to the uploaded invoice file.
+        optional_files (list): List of optional files to upload.
 
     Returns:
         str: Status message indicating success or failure.
     """
+    logs=[]
     # Fix name case (Title Case)
     formatted_name = employee_name.title()  # E.g., "muhammad osama" -> "Muhammad Osama"
 
@@ -137,38 +139,49 @@ def process_employee_folder(access_token, drive_id, parent_folder_path, employee
         for item in items:
             if "folder" in item and formatted_name == item["name"]:
                 employee_folder_id = item["id"]
-                # Folder exists, upload the file
-                upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{employee_folder_id}:/{invoice_file_path}:/content"
-                with open(invoice_file_path, "rb") as f:
-                    upload_response = requests.put(upload_url, headers=headers, data=f)
-                if upload_response.status_code == 201:
-                    return f"Invoice moved to existing folder: {formatted_name}"
-                else:
-                    return f"Error moving invoice: {upload_response.status_code}"
-
-        # Folder does not exist, create it
-        create_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{parent_folder_path}:/children"
-        folder_data = {
-            "name": formatted_name,
-            "folder": {},
-            "@microsoft.graph.conflictBehavior": "rename"
-        }
-        create_response = requests.post(create_url, headers=headers, json=folder_data)
-
-        if create_response.status_code == 201:
-            # Successfully created folder, upload the file
-            new_folder_id = create_response.json()["id"]
-            upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{new_folder_id}:/{invoice_file_path}:/content"
-            with open(invoice_file_path, "rb") as f:
-                upload_response = requests.put(upload_url, headers=headers, data=f)
-            if upload_response.status_code == 201:
-                return f"Invoice moved to newly created folder: {formatted_name}"
-            else:
-                return f"Error moving invoice after creating folder: {upload_response.status_code}"
+                break
         else:
-            return f"Error creating folder: {create_response.status_code}"
+            # Folder does not exist, create it
+            create_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{parent_folder_path}:/children"
+            folder_data = {
+                "name": formatted_name,
+                "folder": {},
+                "@microsoft.graph.conflictBehavior": "rename"
+            }
+            create_response = requests.post(create_url, headers=headers, json=folder_data)
+
+            if create_response.status_code == 201:
+                employee_folder_id = create_response.json()["id"]
+            else:
+                return f"Error creating folder: {create_response.status_code}"
+
+        # Upload the mandatory invoice
+        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{employee_folder_id}:/{invoice_file_path}:/content"
+        with open(invoice_file_path, "rb") as f:
+            upload_response = requests.put(upload_url, headers=headers, data=f)
+        if upload_response.status_code != 201:
+            if upload_response.status_code == 200:
+                logs.append(f"Invoice {invoice_file_path} Already exist with the same name.")
+            else:
+                logs.append(f"Error uploading invoice: {upload_response.status_code}")
+
+        # Upload optional files (if provided)
+        if optional_files:
+            for optional_file in optional_files:
+                upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{employee_folder_id}:/{optional_file.name}:/content"
+                with open(optional_file.name, "rb") as f:
+                    upload_response = requests.put(upload_url, headers=headers, data=f)
+                if upload_response.status_code != 201:
+                    if upload_response.status_code == 200:
+                        logs.append(f"Receipt {optional_file.name} Already exist with the same name.")
+                    else:
+                        logs.append(f"Error uploading file '{optional_file.name}': {upload_response.status_code}")
+
+        logs.append(f"Files uploaded successfully to folder: {formatted_name}")
     else:
-        return f"Error fetching parent folder: {response.status_code}"
+        logs.append(f"Error fetching parent folder: {response.status_code}")
+    
+    return logs
 
 
 def find_master_sheet_path(access_token, drive_id, folder_path):
@@ -556,10 +569,13 @@ def main():
                     DRIVE_ID,
                     FOLDER_PATH,
                     st.session_state["name"],
-                    f"{invoice_file.name}"
+                    f"{invoice_file.name}",  # Mandatory invoice
+                    optional_files=receipt_files
                 )
                 # Log for eamil!
-                st.text("Log: "+f"{process_employee_folder_result_message}")
+                st.text("Log: Process employee folder")
+                for message in process_employee_folder_result_message:
+                    st.text("Log: " + f"{message}")
 
                 # Process master sheet
                 ######################
@@ -570,6 +586,7 @@ def main():
 
                 update_mastersheet_message = update_mastersheet_sharepoint(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, EMPLOYEE_NAME, TOTAL, MONTH)
                 # Log for eamil!
+                st.text("Log: Process master sheet")
                 st.text("Log: "+f"{update_mastersheet_message}")
 
                 ##############################
