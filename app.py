@@ -170,7 +170,6 @@ def process_employee_folder(access_token, drive_id, parent_folder_path, employee
     else:
         return f"Error fetching parent folder: {response.status_code}"
 
-import requests
 
 def find_master_sheet_path(access_token, drive_id, folder_path):
     """
@@ -296,6 +295,58 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
+
+def get_or_create_base_folder_path(access_token, drive_id):
+    """
+    Dynamically determine the base folder path for the academic year and create the folder
+    in SharePoint if it doesn't exist.
+
+    Args:
+        access_token (str): OAuth2 access token for Microsoft Graph API.
+        drive_id (str): The ID of the SharePoint drive.
+
+    Returns:
+        str: The SharePoint folder path.
+    """
+    # Determine the current academic year
+    current_date = datetime.now()
+    current_year = current_date.year
+    current_month = current_date.month
+
+    # Calculate the academic year
+    if current_month >= 8:  # August to December
+        start_year = current_year
+        end_year = current_year + 1
+    else:  # January to July
+        start_year = current_year - 1
+        end_year = current_year
+
+    academic_year = f"{start_year}-{str(end_year)[-2:]}"  # E.g., "2024-25"
+    base_folder_path = f"AEB Financial/{academic_year}/Invoices"
+
+    # Check if the folder exists
+    check_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{base_folder_path}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(check_url, headers=headers)
+
+    if response.status_code == 404:  # Folder does not exist
+        # Create the folder
+        create_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{base_folder_path}:/children"
+        folder_data = {
+            "name": academic_year,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "rename"
+        }
+        create_response = requests.post(create_url, headers=headers, json=folder_data)
+        if create_response.status_code == 201:
+            print(f"Folder '{base_folder_path}' created successfully.")
+        else:
+            raise Exception(f"Error creating folder: {create_response.status_code} - {create_response.text}")
+    elif response.status_code != 200:
+        raise Exception(f"Error checking folder: {response.status_code} - {response.text}")
+
+    # Return the base folder path
+    return base_folder_path
 
 
 def list_files_by_path(access_token, drive_id, folder_path):
@@ -487,7 +538,14 @@ def main():
                 # All Logic here from sharepoint file upload to update master sheet & Folder creation if doesn't exist
                 ##############################
 
-                BASE_FOLDER_PATH = "AEB Financial/2024-25/Invoices"
+                # BASE_FOLDER_PATH = "AEB Financial/2024-25/Invoices"
+                # Get or create the base folder path
+                try:
+                    BASE_FOLDER_PATH = get_or_create_base_folder_path(ACCESS_TOKEN, DRIVE_ID)
+                    print(f"Base folder path: {BASE_FOLDER_PATH}")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
                 month_folder = get_or_create_month_folder(ACCESS_TOKEN, DRIVE_ID, BASE_FOLDER_PATH)
                 FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}"
 
