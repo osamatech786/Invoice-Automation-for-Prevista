@@ -252,7 +252,7 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
 
         # Define the relevant row/column ranges
         start_row = 38
-        end_row = 82
+        end_row = 87
         name_column = "C"  # Column C (e.g., employee names)
         text_column = "B"  # Column B (e.g., 'STARFLEET  / Catalyst')
         month_headers_row = 7  # Row 7 contains month headers
@@ -524,7 +524,7 @@ def main():
 
     # Process Button and Total Display
     st.markdown("<h3>Process & Submit Your Invoice</h3>", unsafe_allow_html=True)
-    if st.button("Process"):
+    if st.button("[MUST] Please Click here to check if your name & total is correct"):
         if not st.session_state["invoice_uploaded"]:
             st.error("Please upload an invoice before processing!")
         else:
@@ -560,7 +560,7 @@ def main():
                     print(f"An error occurred: {e}")
 
                 month_folder = get_or_create_month_folder(ACCESS_TOKEN, DRIVE_ID, BASE_FOLDER_PATH)
-                FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}"
+                FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}/Catalyst"
 
                 # Process employee folder
                 ##########################
