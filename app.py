@@ -1,13 +1,13 @@
 import streamlit as st
 from docx import Document
 import re
-import time
 import requests
 import os
 from dotenv import load_dotenv
 import msal
 from openpyxl import load_workbook
 from datetime import datetime
+import calendar
 
 # Set page configuration with a favicon
 st.set_page_config(
@@ -23,6 +23,7 @@ load_dotenv()
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
+DRIVE_ID = os.getenv("DRIVE_ID")
 
 # Authenticate and acquire an access token
 def acquire_access_token():
@@ -40,18 +41,12 @@ def acquire_access_token():
         print(result.get("error_description"))
         exit()
 
-# Fetch credentials and other required information from .env
-ACCESS_TOKEN = acquire_access_token()  # Replace this with the access token from your script
-DRIVE_ID = "b!2VCEZ48vuU-lKaXKf900jwo7QpeXVTtAhSwcT90mCQWo0mIiav4zTpUyXGx9QXBZ"  # AEB CENTRES Drive ID
-
-
+ACCESS_TOKEN = acquire_access_token() 
 
 ##############################
 # Functions
 ##############################
     
-import requests
-
 def get_or_create_month_folder(access_token, drive_id, parent_folder_path):
     """
     Check if the current month's folder exists in the parent folder.
@@ -65,10 +60,6 @@ def get_or_create_month_folder(access_token, drive_id, parent_folder_path):
     Returns:
         str: The name of the current month's folder.
     """
-    import calendar
-    from datetime import datetime
-    import requests
-
     # Get the current month and year
     current_month_name = calendar.month_name[datetime.now().month]
     current_year_suffix = str(datetime.now().year)[-2:]  # Last 2 digits of the year
@@ -308,19 +299,7 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
-
-def get_or_create_base_folder_path(access_token, drive_id):
-    """
-    Dynamically determine the base folder path for the academic year and create the folder
-    in SharePoint if it doesn't exist.
-
-    Args:
-        access_token (str): OAuth2 access token for Microsoft Graph API.
-        drive_id (str): The ID of the SharePoint drive.
-
-    Returns:
-        str: The SharePoint folder path.
-    """
+def current_academic_year():
     # Determine the current academic year
     current_date = datetime.now()
     current_year = current_date.year
@@ -335,6 +314,22 @@ def get_or_create_base_folder_path(access_token, drive_id):
         end_year = current_year
 
     academic_year = f"{start_year}-{str(end_year)[-2:]}"  # E.g., "2024-25"
+
+    return academic_year
+
+def get_or_create_base_folder_path(access_token, drive_id):
+    """
+    Dynamically determine the base folder path for the academic year and create the folder
+    in SharePoint if it doesn't exist.
+
+    Args:
+        access_token (str): OAuth2 access token for Microsoft Graph API.
+        drive_id (str): The ID of the SharePoint drive.
+
+    Returns:
+        str: The SharePoint folder path.
+    """
+    academic_year = current_academic_year()
     base_folder_path = f"AEB Financial/{academic_year}/Invoices"
 
     # Check if the folder exists
@@ -579,7 +574,7 @@ def main():
 
                 # Process master sheet
                 ######################
-                master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, "AEB Financial/2024-25")
+                master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, f"AEB Financial/{current_academic_year()}")
                 EMPLOYEE_NAME = st.session_state["name"]
                 TOTAL = st.session_state["total"]
                 MONTH =  datetime.now().strftime("%b-%y")
