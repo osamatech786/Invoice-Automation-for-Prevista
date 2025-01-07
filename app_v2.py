@@ -809,7 +809,7 @@ if "session_data" not in st.session_state: st.session_state.session_data = [{"da
 # ========================
 
 ACCESS_TOKEN = acquire_access_token() 
-template_file = "resources/invoice_template.docx"    
+template_file = "resources/template_invoice.docx"    
 
 total_steps = 4 # Define the total number of steps
 progress = get_progress(st.session_state.step, total_steps) # Calculate the current progress
@@ -1021,7 +1021,7 @@ elif st.session_state.step == 4:
             else:
                 # Generate timesheet
                 ####################
-                timesheet_template_path = 'resources/timesheet_template.xlsx'  # Replace with your actual template path
+                timesheet_template_path = 'resources/template_timesheet.xlsx'  # Replace with your actual template path
                 timesheet_save_path = f'Timesheet_{st.session_state.safe_name}.xlsx'  # Path to save the filled file
 
                 st.text("Log: Generatting TimeSheet")
@@ -1106,17 +1106,3 @@ elif st.session_state.step == 4:
         ##############################
         # ####################
         ##############################
-            
-            
-'''
-Email Logs:
-----------
-# if tutuor then:
-   Tutor Validation Results: validation_results
-
-File Moved to folder "" with all attachments
-
-Master Sheet Updated Successfully (Month's Total) (Invoice Incremented)
-If failed then state failed to update month "" for total ""
-
-'''
