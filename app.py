@@ -63,7 +63,17 @@ def get_or_create_month_folder(access_token, drive_id, parent_folder_path):
     # Get the current month and year
     current_month_name = calendar.month_name[datetime.now().month]
     current_year_suffix = str(datetime.now().year)[-2:]  # Last 2 digits of the year
-    next_folder_index = datetime.now().month-6  # Assuming folders follow a numeric sequence (e.g., "5. November 24")
+
+    # Calculate the base index, starting from 1 for July
+    base_month = 7  # July is the starting month
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    start_year = 2024  # The year the sequence started
+
+    # Calculate the index based on the starting point
+    months_since_start = (current_year - start_year) * 12 + (current_month - base_month)
+    next_folder_index = months_since_start + 1  # +1 to start the index from 1 for July
+    
     current_month_folder_name = f"{next_folder_index}. {current_month_name} {current_year_suffix}"
 
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -207,6 +217,16 @@ def find_master_sheet_path(access_token, drive_id, folder_path):
     # If no file is found, raise an exception
     raise FileNotFoundError("No master sheet found (file with '.xlsx' and 'Invoices' in the name).")
 
+def clean_name(name):
+    """
+    Remove bracketed text from a name.
+    Args:
+        name (str): The name with or without bracketed text.
+    Returns:
+        str: The cleaned name without any bracketed text.
+    """
+    import re
+    return re.sub(r"\s*\(.*?\)", "", name).strip()
 
 def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_name, total, month="Jan-24"):
     """
@@ -239,15 +259,53 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
 
         # Step 2: Update the file locally using the existing logic
         workbook = load_workbook(local_file_path)
-        sheet = workbook.active  # Assuming the master sheet is the active sheet
 
-        # Define the relevant row/column ranges
-        start_row = 38
-        end_row = 87
+        # Find the first visible sheet
+        visible_sheet_name = None
+        for sheet_name in workbook.sheetnames:
+            sheet = workbook[sheet_name]
+            if sheet.sheet_state == "visible":  # Check if the sheet is visible
+                visible_sheet_name = sheet_name
+                break
+
+        if visible_sheet_name is None:
+            os.remove(local_file_path)
+            return "Error: No visible sheets found in the workbook."
+
+        print(f"Accessing sheet: {visible_sheet_name}")  # Debugging: Print the name of the accessed sheet
+        sheet = workbook[visible_sheet_name]
+
+        # Define the relevant column ranges
         name_column = "C"  # Column C (e.g., employee names)
         text_column = "B"  # Column B (e.g., 'STARFLEET  / Catalyst')
         month_headers_row = 7  # Row 7 contains month headers
         start_month_column = 8  # Column H (1-based index)
+
+        # Limit to the first 200 rows
+        max_row = 147  # Limit to the first 200 rows to avoid excessive processing
+
+        # Determine start_row and end_row dynamically
+        start_row, end_row = None, None
+        search_value = "STARFLEET  / Catalyst"  # Define the value to search for
+        for row in range(1, max_row + 1):
+            cell_value = sheet[f"{text_column}{row}"].value
+            if cell_value:
+                # Normalize and compare values
+                normalized_cell_value = " ".join(cell_value.split()).strip().lower()
+                normalized_search_value = " ".join(search_value.split()).strip().lower()
+
+                # print(f"Row {row}: Normalized Cell Value: '{normalized_cell_value}', Search Value: '{normalized_search_value}'")
+
+                if normalized_cell_value == normalized_search_value:
+                    if start_row is None:
+                        start_row = row
+                    end_row = row  # Keep updating until the last occurrence
+
+        if start_row is None or end_row is None:
+            os.remove(local_file_path)
+            return f"Error: '{search_value}' not found in the first {max_row} rows."
+
+
 
         # Convert the month input to a datetime object for comparison
         target_month = datetime.strptime(month, "%b-%y")
@@ -271,7 +329,7 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
         for row in range(start_row, end_row + 1):
             if (
                 sheet[f"{text_column}{row}"].value == "STARFLEET  / Catalyst" and
-                sheet[f"{name_column}{row}"].value.strip() == employee_name.strip()
+                clean_name(sheet[f"{name_column}{row}"].value.strip()) == clean_name(employee_name.strip())
             ):
                 # Update the cell for the current month
                 sheet.cell(row=row, column=current_month_col).value = total
