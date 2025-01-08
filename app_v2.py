@@ -983,7 +983,7 @@ elif st.session_state.step == 4:
     # Session Details for Tutors
     if st.session_state.user_data[10] == "Tutor":
         st.write("### Add Details for your TIMESHEET")
-        st.text("Date & Time must be match as per your calendar for accurate payment.")
+        st.text("Date & Time should match your calendar for accurate payment.")
 
         # Single Timezone Selection
         if "timezone" not in st.session_state:
