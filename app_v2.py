@@ -931,7 +931,7 @@ elif st.session_state.step == 2:
 elif st.session_state.step == 3:
 
     # Allow users to input table data
-    st.write("### Add Work Details")
+    st.write("### Add INVOIE Details")
     for i, row in enumerate(st.session_state.table_data):
         cols = st.columns(4)
         row["date"] = cols[0].date_input("Date", datetime.strptime(row["date"], "%d-%m-%Y").date() if row["date"] else None, key=f"date_{i}", format='DD/MM/YYYY')
@@ -970,7 +970,7 @@ elif st.session_state.step == 4:
     )
     # Session Details for Tutors
     if st.session_state.user_data[10] == "Tutor":
-        st.write("### Add Session Details")
+        st.write("### Add Details for your TIMESHEET")
 
         # Single Timezone Selection
         if "timezone" not in st.session_state:
@@ -1034,7 +1034,7 @@ elif st.session_state.step == 4:
         st.write(pd.DataFrame(st.session_state.session_data))
 
     # Validation before generating invoice
-    if st.button("Submit Invoice"):
+    if st.button("Submit"):
         if st.session_state.user_data[10] == "Tutor":
             # Validate if all session details are filled
             incomplete_sessions = [
