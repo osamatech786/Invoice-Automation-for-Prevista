@@ -820,7 +820,7 @@ if 'hourly_rate' not in st.session_state: st.session_state.hourly_rate = None
 if 'inv_total' not in st.session_state: st.session_state.inv_tot = 0
 if 'acc_name' not in st.session_state: st.session_state.acc_name = None
 if 'branch_name' not in st.session_state: st.session_state.branch_name = None
-if 'sort_code' not in st.session_state: st.session_state.sort_code = None
+if 'sort_code' not in st.session_state: st.session_state.sort_code = "N/A"
 if 'acc_num' not in st.session_state: st.session_state.acc_num = None
 if 'table_data' not in st.session_state: st.session_state.table_data = [{"date": "", "time_hours": "", "activity": "", "amount": ""}]
 if 'inv_total' not in st.session_state: st.session_state.inv_total = 0
@@ -909,18 +909,18 @@ elif st.session_state.step == 2:
     st.session_state.inv_date = date.today().strftime("%d-%m-%Y")
     st.write(f"Invoice Date: **{st.session_state.inv_date}**")
 
-    st.session_state.ur_name = st.text_input("Your Name", st.session_state.user_data[2], placeholder="John Doe")
-    st.session_state.inv_num = st.text_input("Invoice Number", st.session_state.user_data[3], placeholder="12345")
+    st.session_state.ur_name = st.text_input("Your Name", st.session_state.user_data[2], placeholder="Kasia Kwiatkowska")
+    st.session_state.inv_num = st.text_input("Invoice Number", st.session_state.user_data[3], placeholder="74")
     st.session_state.centre_num = st.text_input("Centre Number", st.session_state.user_data[4], placeholder="67890")
     st.session_state.hourly_rate = st.text_input("Pay Rate", st.session_state.user_data[5], placeholder="50")
     # st.session_state.inv_total = st.text_input("Invoice Total", st.session_state.user_data[5], placeholder="500")
-    st.session_state.acc_name = st.text_input("Account Holder's Name", st.session_state.user_data[6], placeholder="John Doe Account")
-    st.session_state.branch_name = st.text_input("Branch Name", st.session_state.user_data[7], placeholder="ABC Bank")
-    st.session_state.sort_code = st.text_input("Sort Code", st.session_state.user_data[8], placeholder="00-00-00")
-    st.session_state.acc_num = st.text_input("Account Number", st.session_state.user_data[9], placeholder="12345678")
+    st.session_state.acc_name = st.text_input("Account Holder's Name", st.session_state.user_data[6], placeholder="Kasia Kwiatkowska")
+    st.session_state.branch_name = st.text_input("Bank Name", st.session_state.user_data[7], placeholder="ABC Bank")
+    st.session_state.sort_code = st.text_input("Sort Code (optional for Non UK)", st.session_state.user_data[8], placeholder="00-00-00")
+    st.session_state.acc_num = st.text_input("Account Number / IBAN", st.session_state.user_data[9], placeholder="12345678")
 
     if st.button("Next"):
-        if not all([st.session_state.ur_name, st.session_state.inv_num, st.session_state.centre_num, st.session_state.hourly_rate, st.session_state.acc_name, st.session_state.branch_name, st.session_state.sort_code, st.session_state.acc_num]):
+        if not all([st.session_state.ur_name, st.session_state.inv_num, st.session_state.centre_num, st.session_state.hourly_rate, st.session_state.acc_name, st.session_state.branch_name, st.session_state.acc_num]):
             st.error("Please fill in all required fields.")
             st.stop()
         else:
