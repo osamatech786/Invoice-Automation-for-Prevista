@@ -1043,8 +1043,8 @@ elif st.session_state.step == 4:
             st.experimental_rerun()
 
         # Preview of session data
-        st.write("### Session Data Preview")
-        st.write(pd.DataFrame(st.session_state.session_data))
+        # st.write("### Session Data Preview")
+        # st.write(pd.DataFrame(st.session_state.session_data))
 
     # Validation before generating invoice
     if st.button("Submit"):
