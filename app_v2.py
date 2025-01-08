@@ -932,8 +932,8 @@ elif st.session_state.step == 3:
 
     # Allow users to input table data
     if 'toast_shown' not in st.session_state:
-        st.toast('This page is for INVOICE DETAILS ONLY!', icon="⚠️", duration=5000)
-        st.toast('This page is not for TIMESHEET!', icon="⚠️", duration=5000)
+        st.toast('This page is for INVOICE DETAILS ONLY!'icon="🚨")
+        st.toast('This page is not for TIMESHEET!'icon="🚨")
         st.session_state.toast_shown = True
 
     st.write("### Add INVOICE Details")
