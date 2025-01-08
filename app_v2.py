@@ -931,9 +931,10 @@ elif st.session_state.step == 2:
 elif st.session_state.step == 3:
 
     # Allow users to input table data
-    st.toast('Warning!!!!')
-    st.toast('This page is for INVOICE DETAILS ONLY!')
-    st.toast('This page is not for TIMESHEET!')
+    if 'toast_shown' not in st.session_state:
+        st.toast('This page is for INVOICE DETAILS ONLY!', icon="⚠️", duration=5000)
+        st.toast('This page is not for TIMESHEET!', icon="⚠️", duration=5000)
+        st.session_state.toast_shown = True
 
     st.write("### Add INVOICE Details")
     for i, row in enumerate(st.session_state.table_data):
@@ -956,8 +957,8 @@ elif st.session_state.step == 3:
         st.experimental_rerun() 
 
     # Display table data as a preview
-    st.write("### Work Data Preview")
-    st.write(pd.DataFrame(st.session_state.table_data))
+    # st.write("### Work Data Preview")
+    # st.write(pd.DataFrame(st.session_state.table_data))
 
     # Calculate total
     st.session_state.inv_total = sum(float(row["amount"]) for row in st.session_state.table_data)
