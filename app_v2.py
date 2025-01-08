@@ -931,12 +931,14 @@ elif st.session_state.step == 2:
 elif st.session_state.step == 3:
 
     # Allow users to input table data
-    st.write("### Add INVOIE Details")
+    st.write("### Add INVOICE Details")
     for i, row in enumerate(st.session_state.table_data):
         cols = st.columns(4)
-        row["date"] = cols[0].date_input("Date", datetime.strptime(row["date"], "%d-%m-%Y").date() if row["date"] else None, key=f"date_{i}", format='DD/MM/YYYY')
-        if row["date"]!=None:
-            row["date"] = row["date"].strftime("%d-%m-%Y")
+        # row["date"] = cols[0].date_input("Date / Period", datetime.strptime(row["date"], "%d-%m-%Y").date() if row["date"] else None, key=f"date_{i}", format='DD/MM/YYYY')
+        # if row["date"]!=None:
+        #     row["date"] = row["date"].strftime("%d-%m-%Y")
+            
+        row["date"] = cols[0].text_input("Date / Period", row["date"] if row["date"] else "", key=f"date_{i}", placeholder="DD-MM-YYYY")                    
         row["time_hours"] = cols[1].text_input("Time / Hours", row["time_hours"], key=f"time_hours_{i}")
         row["activity"] = cols[2].text_input("Activity / Service Provided", row["activity"], key=f"activity_{i}")
         row["amount"] = cols[3].number_input("Amount (£)", value=float(row["amount"]) if row["amount"] else 0.0, min_value=0.0, key=f"amount_{i}", format="%.2f")        
