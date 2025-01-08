@@ -933,6 +933,7 @@ elif st.session_state.step == 3:
     # Allow users to input table data
     st.write("### Add INVOICE Details")
     st.toast('This page is not for TIMESHEET!')
+    st.toast('This page is for INVOICE DETAILS ONLY!')
     for i, row in enumerate(st.session_state.table_data):
         cols = st.columns(4)
         # row["date"] = cols[0].date_input("Date / Period", datetime.strptime(row["date"], "%d-%m-%Y").date() if row["date"] else None, key=f"date_{i}", format='DD/MM/YYYY')
@@ -963,7 +964,7 @@ elif st.session_state.step == 3:
         st.session_state.step=4
         st.experimental_rerun()
     if st.button("Back"):
-        st.session_state.step=3
+        st.session_state.step=2
         st.experimental_rerun()
     
 
