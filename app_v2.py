@@ -962,7 +962,8 @@ elif st.session_state.step == 3:
 
     # Calculate total
     st.session_state.inv_total = sum(float(row["amount"]) for row in st.session_state.table_data)
-
+    st.text(f"Total Amount: £{st.session_state.inv_total:.2f}")
+    
     if st.button("Next"):
         st.session_state.step=4
         st.experimental_rerun()
