@@ -335,7 +335,6 @@ def process_employee_folder(access_token, drive_id, parent_folder_path, employee
 
 
 # Function to fetch and read recipients from the "Email" sheet of an Excel file
-@st.cache_data
 def fetch_recipients_from_sharepoint(access_token, drive_id):
     try:
         academic_year = current_academic_year()
@@ -776,7 +775,35 @@ def fill_timesheet(template_path, save_path, session_data):
     # Save the modified workbook
     workbook.save(save_path)
     
-    
+
+# def send_email_with_attachments(sender_email, sender_password, receiver_email, subject, body, files=None, local_file_path=None):
+#     msg = EmailMessage()
+#     msg['From'] = sender_email
+#     msg['To'] = ", ".join(receiver_email)
+#     msg['Subject'] = subject
+#     msg.set_content(body, subtype='html')
+
+#     # Attach uploaded files
+#     if files:
+#         for uploaded_file in files:
+#             uploaded_file.seek(0)  # Move to the beginning of the UploadedFile
+#             msg.add_attachment(uploaded_file.read(), maintype='application', subtype='octet-stream', filename=uploaded_file.name)
+
+#     # Attach local file if specified
+#     if local_file_path:
+#         with open(local_file_path, 'rb') as f:
+#             file_data = f.read()
+#             file_name = local_file_path.split('/')[-1]
+#             msg.add_attachment(file_data, maintype='application', subtype='octet-stream', filename=file_name)
+
+#     # Use the SMTP server for sending the email
+#     with smtplib.SMTP('smtp.office365.com', 587) as server:
+#         server.starttls()
+#         server.login(sender_email, sender_password)
+#         server.send_message(msg)
+        
+        
+            
 # ========================
 # Initialize session state
 # ========================
@@ -1103,6 +1130,11 @@ elif st.session_state.step == 4:
         st.text("Log: Increment invoice number")
         st.text("Log: "+f"{increment_invoice_number_message}")
 
+
+        # Send email
+        
+        # send_email_with_attachments(os.getenv('EMAIL'), os.getenv('PASSWORD'), learner_email, subject_learner, body_learner)
+        
         ##############################
         # ####################
         ##############################
