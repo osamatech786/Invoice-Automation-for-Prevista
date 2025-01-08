@@ -912,7 +912,7 @@ elif st.session_state.step == 2:
     st.session_state.ur_name = st.text_input("Your Name", st.session_state.user_data[2], placeholder="John Doe")
     st.session_state.inv_num = st.text_input("Invoice Number", st.session_state.user_data[3], placeholder="12345")
     st.session_state.centre_num = st.text_input("Centre Number", st.session_state.user_data[4], placeholder="67890")
-    st.session_state.hourly_rate = st.text_input("Hourly Rate", st.session_state.user_data[5], placeholder="50")
+    st.session_state.hourly_rate = st.text_input("Pay Rate", st.session_state.user_data[5], placeholder="50")
     st.session_state.inv_total = st.text_input("Invoice Total", st.session_state.user_data[5], placeholder="500")
     st.session_state.acc_name = st.text_input("Account Name", st.session_state.user_data[6], placeholder="John Doe Account")
     st.session_state.branch_name = st.text_input("Branch Name", st.session_state.user_data[7], placeholder="ABC Bank")
