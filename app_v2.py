@@ -1124,8 +1124,7 @@ elif st.session_state.step == 4:
         # Log for eamil!
         st.text("Log: Processing employee folder")
         for message in process_employee_folder_result_message:
-            st.text("Log: " + f"{message}")
-
+            st.text(f"Log: {message}")
         # Process master sheet
         ######################
         master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, f"AEB Financial/{current_academic_year()}")
