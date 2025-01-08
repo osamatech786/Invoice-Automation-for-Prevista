@@ -355,7 +355,7 @@ def fetch_recipients_from_sharepoint(access_token, drive_id):
         if "Email" not in excel_data.columns:
             raise ValueError("The 'Email' sheet must contain 'Email' column.")
 
-        return list(zip(excel_data["Email"], excel_data["UTR"], excel_data["Name"], excel_data["Invoice Number"], excel_data["Centre Number"], excel_data["Hourly Rate"], excel_data["Account Name"], excel_data["Branch Name"], excel_data["Sort Code"], excel_data["Account Number"], excel_data["JD"]))        
+        return list(zip(excel_data["Email"], excel_data["UTR"], excel_data["Name"], excel_data["Invoice Number"], excel_data["Centre Number"], excel_data["Pay Rate"], excel_data["Account Name"], excel_data["Branch Name"], excel_data["Sort Code"], excel_data["Account Number"], excel_data["JD"]))        
     
     except Exception as e:
         st.error(f"Error fetching recipients: {e}")
