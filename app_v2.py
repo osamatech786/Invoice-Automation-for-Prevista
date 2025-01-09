@@ -14,6 +14,10 @@ from docx.shared import Pt
 from pytz import timezone, all_timezones
 import pytz
 import shutil
+from email.message import EmailMessage
+import smtplib
+import zipfile
+import io
 
 # Set page configuration with a favicon
 st.set_page_config(
@@ -733,16 +737,10 @@ def generate_invoice():
     doc.save(output)
     output.seek(0)
 
-    st.success("Invoice generated successfully!")
-    st.download_button(
-        label="Download Invoice",
-        data=output,
-        file_name=f"Invoice_{st.session_state.safe_name}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
     # Save file locally
     with open(f"Invoice_{st.session_state.safe_name}.docx", "wb") as f:
-        f.write(output.getvalue())        
+        f.write(output.getvalue()) 
+  
             
 def fill_timesheet(template_path, save_path, session_data):
     """
@@ -776,34 +774,103 @@ def fill_timesheet(template_path, save_path, session_data):
     workbook.save(save_path)
     
 
-# def send_email_with_attachments(sender_email, sender_password, receiver_email, subject, body, files=None, local_file_path=None):
-#     msg = EmailMessage()
-#     msg['From'] = sender_email
-#     msg['To'] = ", ".join(receiver_email)
-#     msg['Subject'] = subject
-#     msg.set_content(body, subtype='html')
+    
 
-#     # Attach uploaded files
-#     if files:
-#         for uploaded_file in files:
-#             uploaded_file.seek(0)  # Move to the beginning of the UploadedFile
-#             msg.add_attachment(uploaded_file.read(), maintype='application', subtype='octet-stream', filename=uploaded_file.name)
+def send_email(sender_email, sender_password, receiver_email, subject, body):
+    msg = EmailMessage()
+    msg['From'] = sender_email
+    # msg['To'] = ", ".join(receiver_email) 
+    msg['To'] = receiver_email
+    msg['Subject'] = subject
+    msg.set_content(body, subtype='html')
 
-#     # Attach local file if specified
-#     if local_file_path:
-#         with open(local_file_path, 'rb') as f:
-#             file_data = f.read()
-#             file_name = local_file_path.split('/')[-1]
-#             msg.add_attachment(file_data, maintype='application', subtype='octet-stream', filename=file_name)
-
-#     # Use the SMTP server for sending the email
-#     with smtplib.SMTP('smtp.office365.com', 587) as server:
-#         server.starttls()
-#         server.login(sender_email, sender_password)
-#         server.send_message(msg)
+    # Use the SMTP server for sending the email
+    with smtplib.SMTP('smtp.office365.com', 587) as server:
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
         
+
+# Convert api_events into an HTML table
+def generate_events_table(api_events):
+    table_rows = ""
+    for event in api_events:
+        table_rows += f"""
+        <tr>
+            <td>{event['title']}</td>
+            <td>{event['start']}</td>
+            <td>{event['end']}</td>
+            <td>{event['location']}</td>
+        </tr>
+        """
+    return f"""
+    <table border="1" style="border-collapse: collapse; width: 100%; text-align: left;">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {table_rows}
+        </tbody>
+    </table>
+    """
+   
+
+# Generate HTML table for validation results
+def generate_validation_table(validation_results):
+    table_rows = ""
+    for result in validation_results:
+        session = result["Session"]
+        status = result["Status"]
+        event_details = ""
         
-            
+        # Add event details if matched
+        if result["Event"]:
+            event = result["Event"]
+            event_details = f"""
+                <strong>Title:</strong> {event['title']}<br>
+                <strong>Start:</strong> {event['start']}<br>
+                <strong>End:</strong> {event['end']}<br>
+                <strong>Timezone:</strong> {event['timezone']}
+            """
+        else:
+            event_details = "No Event Found"
+        
+        table_rows += f"""
+        <tr>
+            <td>{session['date']}</td>
+            <td>{session['time']}</td>
+            <td>{session['topic']}</td>
+            <td>{session['duration']}</td>
+            <td>{status}</td>
+            <td>{event_details}</td>
+        </tr>
+        """
+    
+    return f"""
+    <table border="1" style="border-collapse: collapse; width: 100%; text-align: left;">
+        <thead>
+            <tr>
+                <th>Session Date</th>
+                <th>Session Time</th>
+                <th>Topic</th>
+                <th>Duration (hrs)</th>
+                <th>Status</th>
+                <th>Event Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {table_rows}
+        </tbody>
+    </table>
+    """
+    
+    
+             
 # ========================
 # Initialize session state
 # ========================
@@ -873,15 +940,15 @@ if st.session_state.step == 1:
     st.divider()        
         
     # Input placeholders
-    st.write('### Enter your Prevista Email & "Unique Number" and click "Access" button:')
+    # st.write('### Enter your Prevista Email & "Unique Number" and click "Access" button:')
     
     # Email input
     st.session_state.email = st.text_input("Email", placeholder="Enter your email (e.g. format: yourname@prevista.co.uk)")
     # UTR input
-    st.session_state.utr = st.text_input("UTR", placeholder="Enter your UTR (e.g. format: UTR123456)")
+    st.session_state.utr = st.text_input("UTR / URN", placeholder="Enter your UTR (e.g. format: UTR123456)")
     
     
-    if st.button("Access"):
+    if st.button("Proceed"):
         st.session_state.recipients = fetch_recipients_from_sharepoint(ACCESS_TOKEN, DRIVE_ID)
         # Filter the row where email matches
         st.session_state.user_data = next(
@@ -1048,105 +1115,217 @@ elif st.session_state.step == 4:
 
     # Validation before generating invoice
     if st.button("Submit"):
-        if st.session_state.user_data[10] == "Tutor":
-            # Validate if all session details are filled
-            incomplete_sessions = [
-                session for session in st.session_state.session_data 
-                if not session["date"] or not session["time"] or not session["topic"] or session["duration"] <= 0
-            ]
-
-            if incomplete_sessions:
-                st.error("Please ensure all session dates and times are filled before generating the invoice.")
-                st.stop()
-            else:
-                # Generate timesheet
-                ####################
-                timesheet_template_path = 'resources/template_timesheet.xlsx'  # Replace with your actual template path
-                timesheet_save_path = f'Timesheet_{st.session_state.safe_name}.xlsx'  # Path to save the filled file
-
-                st.text("Log: Generatting TimeSheet")
-                fill_timesheet(timesheet_template_path, timesheet_save_path, st.session_state.session_data)
-                
-                # Fetch calendar API events
-                ###########################
-                api_events = fetch_calendar_events(access_token=ACCESS_TOKEN, employee_email=st.session_state.email)
-                st.write("### Calendar API Events")
-                st.write(api_events)
-                validation_results = validate_sessions(st.session_state.session_data, api_events, st.session_state.timezone)
-                st.write("### Validation Results")
-                st.write(validation_results)
-
+        with st.spinner("Processing your invoice submission..."):
             
+            if st.session_state.user_data[10] == "Tutor":
+                # Validate if all session details are filled
+                incomplete_sessions = [
+                    session for session in st.session_state.session_data 
+                    if not session["date"] or not session["time"] or not session["topic"] or session["duration"] <= 0
+                ]
+
+                if incomplete_sessions:
+                    st.error("Please ensure all session dates and times are filled before generating the invoice.")
+                    st.stop()
+                else:
+                    # Generate timesheet
+                    ####################
+                    timesheet_template_path = 'resources/template_timesheet.xlsx'  # Replace with your actual template path
+                    timesheet_save_path = f'Timesheet_{st.session_state.safe_name}.xlsx'  # Path to save the filled file
+
+                    # st.text("Log: Generatting TimeSheet")
+                    fill_timesheet(timesheet_template_path, timesheet_save_path, st.session_state.session_data)
+                    
+                    # Fetch calendar API events
+                    ###########################
+                    api_events = fetch_calendar_events(access_token=ACCESS_TOKEN, employee_email=st.session_state.email)
+                    # st.write("### Calendar API Events")
+                    # st.write(api_events)
+                    validation_results = validate_sessions(st.session_state.session_data, api_events, st.session_state.timezone)
+                    # st.write("### Validation Results")
+                    # st.write(validation_results)            
+
+                
+            ##############################
+            # All Logic here from sharepoint file upload to update master sheet & Folder creation if doesn't exist
+            ##############################
+
+            # Generate Invoice
+            # st.text("Log: Generatting Invoice")
+            generate_invoice()  # f"Invoice_{safe_name}.docx"
+            
+            # Get or create the base folder path
+            try:
+                BASE_FOLDER_PATH = get_or_create_base_folder_path(ACCESS_TOKEN, DRIVE_ID)
+                print(f"Base folder path: {BASE_FOLDER_PATH}")                              # "AEB Financial/2024-25/Invoices"
+            except Exception as e:
+                print(f"    An error occurred: {e}")
+
+            month_folder = get_or_create_month_folder(ACCESS_TOKEN, DRIVE_ID, BASE_FOLDER_PATH) # "Jan-24" or "Feb-24" etc.
+            FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}/Catalyst"
+
+            # Process employee folder
+            ##########################
+            
+            # Option files:
+            # * Receipt file 
+            # * Timesheet for tutors only
+            # Start with receipt files in optional_files
+            optional_files = list(receipt_files)
+
+            # Add the timesheet to optional_files if it exists
+            if os.path.exists(timesheet_save_path):
+                with open(timesheet_save_path, "rb") as file:
+                    timesheet_content = BytesIO(file.read())  # Read the file content into BytesIO
+                    timesheet_content.name = os.path.basename(timesheet_save_path)  # Retain original file name
+                    optional_files.append(timesheet_content)
+            
+            # Upload to Sharepoint
+            process_employee_folder_result_message = process_employee_folder(
+                ACCESS_TOKEN,
+                DRIVE_ID,
+                FOLDER_PATH,
+                st.session_state.ur_name,
+                f"Invoice_{st.session_state.safe_name}.docx",  # Mandatory invoice
+                optional_files=optional_files
+            )
+            
+            # Log for eamil!
+            # st.text("Log: Processing employee folder")
+            # for message in process_employee_folder_result_message:
+            #     st.text(f"Log: (Processing employee folder) {message}")
+                
+            # Process master sheet
+            ######################
+            master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, f"AEB Financial/{current_academic_year()}")
+            EMPLOYEE_NAME = st.session_state.ur_name
+            TOTAL = st.session_state.inv_total
+            MONTH =  datetime.now().strftime("%b-%y")
+
+            update_mastersheet_message = update_mastersheet_sharepoint(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, EMPLOYEE_NAME, TOTAL, MONTH)
+            # Log for eamil!
+            # st.text("Log: Process master sheet")
+            # st.text("Log: "+f"{update_mastersheet_message}")
+            
+            increment_invoice_number_message = increment_invoice_number(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, st.session_state.email)
+            # Log for eamil!
+            # st.text("Log: Increment invoice number")
+            # st.text("Log: "+f"{increment_invoice_number_message}")
+
+            # Email Logs
+            ##########################
+            subject = f"Invoice for {st.session_state.ur_name} has been received"
+            
+            if st.session_state.user_data[10] == "Tutor":
+                # Generate the events table HTML
+                events_table_html = generate_events_table(api_events)  
+                # Generate the validation results table HTML
+                validation_table_html = generate_validation_table(validation_results)              
+                
+                body = f"""
+                <html>
+                <body>
+                    <p>Invoice Received for <b>Tutor</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>
+                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <br>
+                    
+                    <p><b>Log: Move Files to Sharepoint folder: </b></p>
+                    {process_employee_folder_result_message}
+                    <br>
+                    
+                    <p><b>Log: Process master sheet: </b></p>
+                    {update_mastersheet_message}
+                    <br>
+                    
+                    <p><b>Log: Increment invoice number: </b></p>
+                    {increment_invoice_number_message}
+                    <br>                    
+                    
+                    <p><b>Calendar Validation Results:</b></p>
+                    {validation_table_html}
+                    <br>
+                    <p><b>All Fetched Events from Employee Calendar:</b></p>
+                    {events_table_html} 
+
+                </body>
+                </html>
+                """            
+                    
+            else:
+                body = f"""
+                <html>
+                <body>
+                    <p>Invoice Received for <b>Employee</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <br>
+
+                    <p><b>Log: Move Files to Sharepoint folder: </b></p>
+                    {process_employee_folder_result_message}
+                    <br>
+                    
+                    <p><b>Log: Process master sheet: </b></p>
+                    {update_mastersheet_message}
+                    <br>
+                    
+                    <p><b>Log: Increment invoice number: </b></p>
+                    {increment_invoice_number_message}
+                    <br>                    
+                                        
+                </body>
+                </html>
+                """
+         
+            send_email(os.getenv('EMAIL'), os.getenv('PASSWORD'), os.getenv('EMAIL'), subject, body)
+        
+        
+        # Success & Download Buttons
         ##############################
-        # All Logic here from sharepoint file upload to update master sheet & Folder creation if doesn't exist
-        ##############################
-
-        # Generate Invoice
-        st.text("Log: Generatting Invoice")
-        generate_invoice()  # f"Invoice_{safe_name}.docx"
         
-        # Get or create the base folder path
-        try:
-            BASE_FOLDER_PATH = get_or_create_base_folder_path(ACCESS_TOKEN, DRIVE_ID)
-            print(f"Base folder path: {BASE_FOLDER_PATH}")                              # "AEB Financial/2024-25/Invoices"
-        except Exception as e:
-            print(f"    An error occurred: {e}")
-
-        month_folder = get_or_create_month_folder(ACCESS_TOKEN, DRIVE_ID, BASE_FOLDER_PATH) # "Jan-24" or "Feb-24" etc.
-        FOLDER_PATH = f"{BASE_FOLDER_PATH}/{month_folder}/Catalyst"
-
-        # Process employee folder
-        ##########################
+        st.success("Invoice Submitted Successfully!")
+        # st.download_button(
+        #     label="Download Invoice (Optional)",
+        #     data=open(f"Invoice_{st.session_state.safe_name}.docx", "rb"),
+        #     file_name=f"Invoice_{st.session_state.safe_name}.docx",
+        #     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        # )        
+        # if st.session_state.user_data[10] == "Tutor":
+        #     # Download button for Timesheet
+        #     st.download_button(
+        #         label="Download Timesheet (Optional)", 
+        #         data=open(f"Timesheet_{st.session_state.safe_name}.xlsx", "rb"),
+        #         file_name=f"Timesheet_{st.session_state.safe_name}.xlsx",
+        #         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        #     )         
         
-        # Option files:
-        # * Receipt file 
-        # * Timesheet for tutors only
-        # Start with receipt files in optional_files
-        optional_files = list(receipt_files)
+        # Prepare files for download
+        if st.session_state.user_data[10] == "Tutor":
+            # Create a zip file containing both invoice and timesheet
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zf:
+                # Add Invoice
+                with open(f"Invoice_{st.session_state.safe_name}.docx", "rb") as invoice_file:
+                    zf.writestr(f"Invoice_{st.session_state.safe_name}.docx", invoice_file.read())
+                
+                # Add Timesheet
+                with open(f"Timesheet_{st.session_state.safe_name}.xlsx", "rb") as timesheet_file:
+                    zf.writestr(f"Timesheet_{st.session_state.safe_name}.xlsx", timesheet_file.read())
+            
+            zip_buffer.seek(0)
+            st.download_button(
+                label="Download Invoice + Timesheet",
+                data=zip_buffer,
+                file_name=f"Invoice_and_Timesheet_{st.session_state.safe_name}.zip",
+                mime="application/zip",
+            )
+        else:
+            # Single file download for invoice only
+            st.download_button(
+                label="Download Invoice",
+                data=open(f"Invoice_{st.session_state.safe_name}.docx", "rb"),
+                file_name=f"Invoice_{st.session_state.safe_name}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 
-        # Add the timesheet to optional_files if it exists
-        if os.path.exists(timesheet_save_path):
-            with open(timesheet_save_path, "rb") as file:
-                timesheet_content = BytesIO(file.read())  # Read the file content into BytesIO
-                timesheet_content.name = os.path.basename(timesheet_save_path)  # Retain original file name
-                optional_files.append(timesheet_content)
-        
-        # Upload to Sharepoint
-        process_employee_folder_result_message = process_employee_folder(
-            ACCESS_TOKEN,
-            DRIVE_ID,
-            FOLDER_PATH,
-            st.session_state.ur_name,
-            f"Invoice_{st.session_state.safe_name}.docx",  # Mandatory invoice
-            optional_files=optional_files
-        )
-        
-        # Log for eamil!
-        st.text("Log: Processing employee folder")
-        for message in process_employee_folder_result_message:
-            st.text(f"Log: {message}")
-        # Process master sheet
-        ######################
-        master_FILE_PATH = find_master_sheet_path(ACCESS_TOKEN, DRIVE_ID, f"AEB Financial/{current_academic_year()}")
-        EMPLOYEE_NAME = st.session_state.ur_name
-        TOTAL = st.session_state.inv_total
-        MONTH =  datetime.now().strftime("%b-%y")
-
-        update_mastersheet_message = update_mastersheet_sharepoint(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, EMPLOYEE_NAME, TOTAL, MONTH)
-        # Log for eamil!
-        st.text("Log: Process master sheet")
-        st.text("Log: "+f"{update_mastersheet_message}")
-        
-        increment_invoice_number_message = increment_invoice_number(ACCESS_TOKEN, DRIVE_ID, master_FILE_PATH, st.session_state.email)
-        # Log for eamil!
-        st.text("Log: Increment invoice number")
-        st.text("Log: "+f"{increment_invoice_number_message}")
-
-
-        # Send email
-        
-        # send_email_with_attachments(os.getenv('EMAIL'), os.getenv('PASSWORD'), learner_email, subject_learner, body_learner)
-        
         ##############################
         # ####################
         ##############################
