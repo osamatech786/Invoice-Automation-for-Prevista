@@ -898,6 +898,8 @@ if 'time' not in st.session_state: st.session_state.time = None
 if 'safe_name' not in st.session_state: st.session_state.safe_name = None
 
 if "session_data" not in st.session_state: st.session_state.session_data = [{"date": "", "time": ""}]
+
+if "timesheet_save_path" not in st.session_state: st.session_state.timesheet_save_path = None
 # ========================
 # App
 # ========================
@@ -1131,10 +1133,10 @@ elif st.session_state.step == 4:
                     # Generate timesheet
                     ####################
                     timesheet_template_path = 'resources/template_timesheet.xlsx'  # Replace with your actual template path
-                    timesheet_save_path = f'Timesheet_{st.session_state.safe_name}.xlsx'  # Path to save the filled file
+                    st.session_state.timesheet_save_path = f'Timesheet_{st.session_state.safe_name}.xlsx'  # Path to save the filled file
 
                     # st.text("Log: Generatting TimeSheet")
-                    fill_timesheet(timesheet_template_path, timesheet_save_path, st.session_state.session_data)
+                    fill_timesheet(timesheet_template_path, st.session_state.timesheet_save_path, st.session_state.session_data)
                     
                     # Fetch calendar API events
                     ###########################
@@ -1174,10 +1176,10 @@ elif st.session_state.step == 4:
             optional_files = list(receipt_files)
 
             # Add the timesheet to optional_files if it exists
-            if os.path.exists(timesheet_save_path):
-                with open(timesheet_save_path, "rb") as file:
+            if st.session_state.timesheet_save_path and os.path.exists(st.session_state.timesheet_save_path):
+                with open(st.session_state.timesheet_save_path, "rb") as file:
                     timesheet_content = BytesIO(file.read())  # Read the file content into BytesIO
-                    timesheet_content.name = os.path.basename(timesheet_save_path)  # Retain original file name
+                    timesheet_content.name = os.path.basename(st.session_state.timesheet_save_path)  # Retain original file name
                     optional_files.append(timesheet_content)
             
             # Upload to Sharepoint
@@ -1214,7 +1216,7 @@ elif st.session_state.step == 4:
 
             # Email Logs
             ##########################
-            subject = f"Invoice for {st.session_state.ur_name} has been received"
+            subject = f"Invoice of {st.session_state.ur_name} has been submitted."
             
             if st.session_state.user_data[10] == "Tutor":
                 # Generate the events table HTML
@@ -1250,12 +1252,12 @@ elif st.session_state.step == 4:
                 </body>
                 </html>
                 """            
-                    
+
             else:
                 body = f"""
                 <html>
                 <body>
-                    <p>Invoice Received for <b>Employee</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <p>Invoice Received for <b>Employee</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>
                     <p>Invoice total: {st.session_state.inv_total}.</p>
                     <br>
 
