@@ -776,13 +776,25 @@ def fill_timesheet(template_path, save_path, session_data):
 
     
 
-def send_email(sender_email, sender_password, receiver_email, subject, body):
+def send_email(sender_email, sender_password, receiver_email, subject, body, invoice_attachment, timesheet_attachment=None):
     msg = EmailMessage()
     msg['From'] = sender_email
-    # msg['To'] = ", ".join(receiver_email) 
     msg['To'] = receiver_email
     msg['Subject'] = subject
     msg.set_content(body, subtype='html')
+
+    # Add mandatory invoice attachment
+    with open(invoice_attachment, 'rb') as f:
+        file_data = f.read()
+        file_name = os.path.basename(invoice_attachment)
+        msg.add_attachment(file_data, maintype='application', subtype='octet-stream', filename=file_name)
+
+    # Add optional timesheet attachment if provided
+    if timesheet_attachment:
+        with open(timesheet_attachment, 'rb') as f:
+            file_data = f.read()
+            file_name = os.path.basename(timesheet_attachment)
+            msg.add_attachment(file_data, maintype='application', subtype='octet-stream', filename=file_name)
 
     # Use the SMTP server for sending the email
     with smtplib.SMTP('smtp.office365.com', 587) as server:
@@ -1228,7 +1240,7 @@ elif st.session_state.step == 4:
                 <html>
                 <body>
                     <p>Invoice Received for <b>Tutor</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>
-                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <p>Invoice total: £{st.session_state.inv_total}.</p>
                     <br>
                     
                     <p><b>Log: Move Files to Sharepoint folder: </b></p>
@@ -1252,13 +1264,14 @@ elif st.session_state.step == 4:
                 </body>
                 </html>
                 """            
+                send_email(os.getenv('EMAIL'), os.getenv('PASSWORD'), os.getenv('EMAIL'), subject, body, f"Invoice_{st.session_state.safe_name}.docx", st.session_state.timesheet_save_path)
 
             else:
                 body = f"""
                 <html>
                 <body>
                     <p>Invoice Received for <b>Employee</b> : {st.session_state.ur_name} [{st.session_state.email}],</p>
-                    <p>Invoice total: {st.session_state.inv_total}.</p>
+                    <p>Invoice total: £{st.session_state.inv_total}.</p>
                     <br>
 
                     <p><b>Log: Move Files to Sharepoint folder: </b></p>
@@ -1276,8 +1289,7 @@ elif st.session_state.step == 4:
                 </body>
                 </html>
                 """
-         
-            send_email(os.getenv('EMAIL'), os.getenv('PASSWORD'), os.getenv('EMAIL'), subject, body)
+                send_email(os.getenv('EMAIL'), os.getenv('PASSWORD'), os.getenv('EMAIL'), subject, body, f"Invoice_{st.session_state.safe_name}.docx")
         
         
         # Success & Download Buttons
