@@ -12,7 +12,6 @@ import calendar
 import pandas as pd
 from docx.shared import Pt
 from pytz import timezone, all_timezones
-import pytz
 import shutil
 from email.message import EmailMessage
 import smtplib
@@ -408,9 +407,11 @@ def clean_name(name):
     import re
     return re.sub(r"\s*\(.*?\)", "", name).strip()
 
-def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_name, total, month="Jan-24"):
+
+def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_name, total, month="Jan-25"):
     """
-    Update the master sheet in SharePoint by modifying only the required cell.
+    Update the master sheet in SharePoint by modifying only the required cell using the Microsoft Graph API.
+    Includes detailed debugging for header values and handles Excel serial dates.
 
     Args:
         access_token (str): OAuth2 access token for authentication.
@@ -418,130 +419,144 @@ def update_mastersheet_sharepoint(access_token, drive_id, file_path, employee_na
         file_path (str): The relative path to the file in SharePoint.
         employee_name (str): The name of the employee.
         total (float): The total to update for the given month.
-        month (str): The month to update in the format 'Dec-24'.
+        month (str): The month to update in the format 'MMM-yy'.
 
     Returns:
         str: Status message indicating success or failure.
     """
     try:
-        # Step 1: Download the file from SharePoint
-        download_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
+        # Step 1: Fetch file ID
+        print(f"Fetching file ID for path: {file_path}")
+        get_file_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}"
         headers = {"Authorization": f"Bearer {access_token}"}
-        response = requests.get(download_url, headers=headers)
+        response = requests.get(get_file_url, headers=headers)
 
         if response.status_code != 200:
-            return f"Error downloading file: {response.status_code} - {response.text}"
+            print(f"Error fetching file ID: {response.status_code} - {response.text}")
+            return f"Error fetching file ID: {response.status_code} - {response.text}"
 
-        # Save the file locally
-        local_file_path = "temp_master_sheet.xlsx"
-        with open(local_file_path, "wb") as f:
-            f.write(response.content)
+        file_id = response.json().get("id")
+        print(f"File ID: {file_id}")
 
-        # Step 2: Update the file locally using the existing logic
-        workbook = load_workbook(local_file_path)
+        # Step 2: Get the first visible worksheet
+        print("Fetching list of worksheets...")
+        sheets_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets"
+        sheets_response = requests.get(sheets_url, headers=headers)
 
-        # Find the first visible sheet
+        if sheets_response.status_code != 200:
+            print(f"Error fetching worksheets: {sheets_response.status_code} - {sheets_response.text}")
+            return f"Error fetching worksheets: {sheets_response.status_code} - {sheets_response.text}"
+
+        sheets = sheets_response.json().get("value", [])
         visible_sheet_name = None
-        for sheet_name in workbook.sheetnames:
-            sheet = workbook[sheet_name]
-            if sheet.sheet_state == "visible":  # Check if the sheet is visible
-                visible_sheet_name = sheet_name
+        for sheet in sheets:
+            if sheet.get("visibility", "") == "Visible":
+                visible_sheet_name = sheet["name"]
+                print(f"First visible sheet found: {visible_sheet_name}")
                 break
 
-        if visible_sheet_name is None:
-            os.remove(local_file_path)
+        if not visible_sheet_name:
+            print("Error: No visible sheets found in the workbook.")
             return "Error: No visible sheets found in the workbook."
 
-        print(f"Accessing sheet: {visible_sheet_name}")  # Debugging: Print the name of the accessed sheet
-        sheet = workbook[visible_sheet_name]
+        # Step 3: Fetch month headers
+        month_headers_row = 7
+        month_headers_range = f"H{month_headers_row}:S{month_headers_row}"  # Adjusted range based on screenshot
+        print(f"Fetching month headers from range: {month_headers_range}")
 
-        # Define the relevant column ranges
-        name_column = "C"  # Column C (e.g., employee names)
-        text_column = "B"  # Column B (e.g., 'STARFLEET  / Catalyst')
-        month_headers_row = 7  # Row 7 contains month headers
-        start_month_column = 8  # Column H (1-based index)
+        headers_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets('{visible_sheet_name}')/range(address='{month_headers_range}')"
+        headers_response = requests.get(headers_url, headers=headers)
 
-        # Limit to the first 200 rows
-        max_row = 147  # Limit to the first 200 rows to avoid excessive processing
+        if headers_response.status_code != 200:
+            print(f"Error fetching month headers: {headers_response.status_code} - {headers_response.text}")
+            return f"Error fetching month headers: {headers_response.status_code} - {headers_response.text}"
 
-        # Determine start_row and end_row dynamically
-        start_row, end_row = None, None
-        search_value = "STARFLEET  / Catalyst"  # Define the value to search for
-        for row in range(1, max_row + 1):
-            cell_value = sheet[f"{text_column}{row}"].value
-            if cell_value:
-                # Normalize and compare values
-                normalized_cell_value = " ".join(cell_value.split()).strip().lower()
-                normalized_search_value = " ".join(search_value.split()).strip().lower()
+        headers_values = headers_response.json().get("values", [[]])[0]
+        print("Raw month headers fetched:", headers_values)
 
-                # print(f"Row {row}: Normalized Cell Value: '{normalized_cell_value}', Search Value: '{normalized_search_value}'")
+        # Step 4: Match the provided month with headers (convert serial dates to datetime)
+        current_month_col = None
+        excel_start_date = datetime(1899, 12, 30)  # Excel starts from 30-Dec-1899
+        for col_index, header in enumerate(headers_values, start=8):  # Adjust starting index if necessary
+            print(f"Checking header: {header} at column {col_index}")
+            try:
+                # Convert Excel serial number to datetime
+                header_date = excel_start_date + timedelta(days=int(header))
+                formatted_header = header_date.strftime("%b-%y")
+                if formatted_header == month:
+                    current_month_col = col_index
+                    print(f"Matched date header: {header_date} (formatted: {formatted_header}) at column {col_index}")
+                    break
+            except (ValueError, TypeError) as e:
+                print(f"Skipping invalid header format: {header}, error: {e}")
 
-                if normalized_cell_value == normalized_search_value:
-                    if start_row is None:
-                        start_row = row
-                    end_row = row  # Keep updating until the last occurrence
-
-        if start_row is None or end_row is None:
-            os.remove(local_file_path)
-            return f"Error: '{search_value}' not found in the first {max_row} rows."
-
-
-
-        # Convert the month input to a datetime object for comparison
-        target_month = datetime.strptime(month, "%b-%y")
-
-        # Match the month column
-        for col in range(start_month_column, start_month_column + 12):  # Columns H to S
-            cell_value = sheet.cell(row=month_headers_row, column=col).value
-            if isinstance(cell_value, datetime):
-                formatted_header = cell_value.strftime("%b-%y")
-            else:
-                formatted_header = cell_value
-
-            if formatted_header == month:
-                current_month_col = col
-                break
-        else:
-            os.remove(local_file_path)
+        if current_month_col is None:
+            print(f"Error: Month '{month}' not found in master sheet.")
             return f"Error: Month '{month}' not found in master sheet."
 
-        # Locate the employee's row
-        for row in range(start_row, end_row + 1):
-            if (
-                sheet[f"{text_column}{row}"].value == "STARFLEET  / Catalyst" and
-                clean_name(sheet[f"{name_column}{row}"].value.strip()) == clean_name(employee_name.strip())
-            ):
-                # Update the cell for the current month
-                sheet.cell(row=row, column=current_month_col).value = total
+        print(f"Matched month column: {current_month_col}")
+
+        # Step 5: Fetch employee data
+        name_column_range = f"B1:C147"
+        print(f"Fetching employee data from range: {name_column_range}")
+
+        name_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets('{visible_sheet_name}')/range(address='{name_column_range}')"
+        name_response = requests.get(name_url, headers=headers)
+
+        if name_response.status_code != 200:
+            print(f"Error fetching employee rows: {name_response.status_code} - {name_response.text}")
+            return f"Error fetching employee rows: {name_response.status_code} - {name_response.text}"
+
+        name_values = name_response.json().get("values", [])
+        print("Employee data fetched:", name_values)
+
+        target_row = None
+        for row_index, row in enumerate(name_values, start=1):
+            print(f"Checking row {row_index}: {row}")
+            # if len(row) > 1 and row[1].strip().lower() == employee_name.strip().lower():
+            if len(row) > 1 and clean_name(row[1].strip().lower()) == clean_name(employee_name.strip().lower()):
+                st.write(clean_name(row[1].strip().lower()))
+                st.write(row[1].strip().lower())
+                st.write(clean_name(employee_name.strip().lower()))
+                st.write(employee_name.strip().lower())
+                target_row = row_index
+                print(f"Matched employee: {employee_name} at row {row_index}")
                 break
-        else:
-            os.remove(local_file_path)
+
+        if target_row is None:
+            print(f"Error: Employee '{employee_name}' not found in the master sheet.")
             return f"Error: Employee '{employee_name}' not found in the master sheet."
 
-        # Save the updated workbook locally
-        workbook.save(local_file_path)
+        print(f"Matched employee row: {target_row}")
 
-        # Step 3: Upload the updated file back to SharePoint
-        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
-        with open(local_file_path, "rb") as f:
-            upload_response = requests.put(upload_url, headers=headers, data=f)
+        # Step 6: Update the target cell
+        target_cell_address = f"{chr(64 + current_month_col)}{target_row}"
+        print(f"Updating cell: {target_cell_address} with value: {total}")
 
-        # Remove the local temporary file
-        os.remove(local_file_path)
+        update_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets('{visible_sheet_name}')/range(address='{target_cell_address}')"
+        update_data = {"values": [[total]]}
 
-        if upload_response.status_code == 200:
+        update_response = requests.patch(update_url, headers=headers, json=update_data)
+
+        if update_response.status_code == 200:
+            print(f"Successfully updated total for '{employee_name}' in '{month}'.")
             return f"Successfully updated total for '{employee_name}' in '{month}'."
         else:
-            return f"Error uploading file back to SharePoint: {upload_response.status_code} - {upload_response.text}"
+            print(f"Error updating cell: {update_response.status_code} - {update_response.text}")
+            return f"Error updating cell: {update_response.status_code} - {update_response.text}"
 
     except Exception as e:
+        print(f"An error occurred: {str(e)}")
         return f"An error occurred: {str(e)}"
-
 
 
 def increment_invoice_number(access_token, drive_id, file_path, target_email):
     """
-    Increment the "Invoice Number" for a specific email in the "Email" sheet of the master file.
+    Increment the "Invoice Number" for a specific email in the "Email" sheet of the Excel file on SharePoint.
+
+    This function dynamically fetches the range of rows containing data in the "Email" sheet to find the target email,
+    increments the corresponding invoice number in the "Invoice Number" column, and updates it directly using the
+    Microsoft Graph API.
 
     Args:
         access_token (str): OAuth2 access token for authentication.
@@ -553,61 +568,58 @@ def increment_invoice_number(access_token, drive_id, file_path, target_email):
         str: Status message indicating success or failure.
     """
     try:
-        # Step 1: Download the file from SharePoint
-        download_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
+        # Get the file ID using the file path
+        get_file_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}"
         headers = {"Authorization": f"Bearer {access_token}"}
-        response = requests.get(download_url, headers=headers)
+        response = requests.get(get_file_url, headers=headers)
 
         if response.status_code != 200:
-            return f"Error downloading file: {response.status_code} - {response.text}"
+            return f"Error fetching file ID: {response.status_code} - {response.text}"
 
-        # Save the file locally
-        local_file_path = "temp_master_sheet.xlsx"
-        with open(local_file_path, "wb") as f:
-            f.write(response.content)
+        file_id = response.json().get("id")
+        worksheet_name = "Email"  # Correct worksheet name
 
-        # Step 2: Load the workbook and access the "Email" sheet
-        workbook = load_workbook(local_file_path)
-        if "Email" not in workbook.sheetnames:
-            os.remove(local_file_path)
-            return "Error: 'Email' sheet not found in the workbook."
+        # Fetch the used range to dynamically get rows with data
+        used_range_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets('{worksheet_name}')/usedRange"
+        used_range_response = requests.get(used_range_url, headers=headers)
 
-        sheet = workbook["Email"]
+        if used_range_response.status_code != 200:
+            return f"Error fetching used range: {used_range_response.status_code} - {used_range_response.text}"
 
-        # Locate the row with the target email and increment "Invoice Number"
-        email_column = 1  # Column A
-        invoice_number_column = 4  # Column D
-        email_found = False
+        used_range_values = used_range_response.json().get("values", [])
+        if not used_range_values:
+            return "Error: No data found in the sheet."
 
-        for row in range(2, sheet.max_row + 1):  # Start from row 2 to skip the header
-            cell_email = sheet.cell(row=row, column=email_column).value
-            if cell_email == target_email:
-                email_found = True
-                current_invoice = sheet.cell(row=row, column=invoice_number_column).value
-                if current_invoice is None:
-                    current_invoice = 0  # Initialize if not set
-                sheet.cell(row=row, column=invoice_number_column).value = current_invoice + 1
+        # Find the row containing the target email
+        row_index = None
+        for index, row in enumerate(used_range_values, start=1):  # 1-based index
+            if row and row[0] == target_email:
+                row_index = index
                 break
 
-        if not email_found:
-            os.remove(local_file_path)
+        if row_index is None:
             return f"Error: Email '{target_email}' not found in the 'Email' sheet."
 
-        # Save the updated workbook locally
-        workbook.save(local_file_path)
+        # Increment the invoice number in column D
+        cell_address = f"D{row_index}"
+        update_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_id}/workbook/worksheets('{worksheet_name}')/range(address='{cell_address}')"
 
-        # Step 3: Upload the updated file back to SharePoint
-        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path}:/content"
-        with open(local_file_path, "rb") as f:
-            upload_response = requests.put(upload_url, headers=headers, data=f)
+        # Get the current value
+        current_value_response = requests.get(update_url, headers=headers)
+        if current_value_response.status_code != 200:
+            return f"Error fetching current invoice number: {current_value_response.status_code} - {current_value_response.text}"
 
-        # Remove the local temporary file
-        os.remove(local_file_path)
+        current_value = current_value_response.json().get("values", [[0]])[0][0]
+        new_value = int(current_value) + 1 if current_value else 1  # Increment by 1
 
-        if upload_response.status_code == 200:
-            return f"Successfully incremented invoice number for '{target_email}'."
+        # Update the value
+        update_data = {"values": [[new_value]]}
+        update_response = requests.patch(update_url, headers=headers, json=update_data)
+
+        if update_response.status_code == 200:
+            return f"Successfully incremented invoice number for '{target_email}' to {new_value}."
         else:
-            return f"Error uploading file back to SharePoint: {upload_response.status_code} - {upload_response.text}"
+            return f"Error updating cell: {update_response.status_code} - {update_response.text}"
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
